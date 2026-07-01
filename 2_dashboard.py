@@ -53,7 +53,7 @@ st.markdown(
 
 # 3. DATA & MODEL LOADING (cached)
 DATA_ROWS = 150          # jumlah baris data simulasi (urut, bukan diacak)
-SIM_STEP_DELAY = 0.01    # kecepatan render per baris
+SIM_STEP_DELAY = 0.05    # kecepatan render per baris
 
 COUNTRY_SEED = {
     "US": "United States",
