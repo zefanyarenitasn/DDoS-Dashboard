@@ -8,6 +8,81 @@ from datetime import datetime
 import streamlit as st
 import pandas as pd
 import time
+import streamlit as st
+import pandas as pd
+import time
+# (import joblib dan load model di sini)
+
+# 1. Inisialisasi Memori Blacklist
+if 'blacklist_ips' not in st.session_state:
+    st.session_state.blacklist_ips = []
+
+st.subheader("🛡️ Simulasi Auto-Blocking (Dataset)")
+
+# 2. BUAT WADAH TABEL DI SINI (Sebelum Tombol Ditekan)
+st.markdown("---")
+st.subheader("🚫 Daftar Hitam IP (Blacklisted)")
+tempat_tabel = st.empty() # Ini kunci rahasianya! Wadah kosong untuk tabel live
+
+# Render tabel awal jika memori sudah ada isinya (saat refresh)
+if len(st.session_state.blacklist_ips) > 0:
+    df_awal = pd.DataFrame({
+        "IP Penyerang (Diblock)": st.session_state.blacklist_ips,
+        "Status": "DROP (iptables)",
+        "Keterangan": "Terindikasi SYN Flood"
+    })
+    tempat_tabel.dataframe(df_awal, use_container_width=True)
+else:
+    tempat_tabel.info("Belum ada IP yang diblokir. Jaringan aman.")
+
+# 3. TOMBOL MONITORING
+if st.button("Mulai Monitoring Trafik"):
+    # Baca dataset dan ambil sampel
+    df = pd.read_parquet("Data/Syn-training.parquet")
+    df_demo = df.sample(n=30, random_state=42)
+    
+    status_box = st.empty()
+    alert_box = st.empty()
+    
+    st.write("---")
+    st.markdown("**Status Eksekusi:**")
+    
+    for index, row in df_demo.iterrows():
+        # Ambil IP (Sesuaikan nama 'Source IP' dengan datasetmu)
+        ip_sumber = row.get('Source IP', f"192.168.1.{index % 255}") 
+        
+        # Ekstraksi fitur
+        fitur = row.drop(['Label', 'Source IP'], errors='ignore')
+        fitur_model = fitur[model.feature_names_in_].values.reshape(1, -1)
+        
+        # Prediksi
+        prediksi = model.predict(fitur_model)[0]
+        
+        status_box.info(f"⏳ Memeriksa paket masuk dari IP: {ip_sumber}...")
+        time.sleep(0.3) 
+        
+        if prediksi == 1: 
+            if ip_sumber not in st.session_state.blacklist_ips:
+                st.session_state.blacklist_ips.append(ip_sumber) 
+                
+                alert_box.error(f"🚨 ANOMALI TERDETEKSI! Memblokir IP {ip_sumber}")
+                
+                # 4. UPDATE TABEL SECARA LIVE DI DALAM LOOP
+                df_update = pd.DataFrame({
+                    "IP Penyerang (Diblock)": st.session_state.blacklist_ips,
+                    "Status": "DROP (iptables)",
+                    "Keterangan": "Terindikasi SYN Flood"
+                })
+                tempat_tabel.dataframe(df_update, use_container_width=True) # Tabel langsung ter-update!
+                
+                time.sleep(0.5) 
+        else:
+            alert_box.success(f"✅ Aman. Trafik normal dari IP {ip_sumber} dilewatkan.")
+
+# Tombol untuk membersihkan memori (Bisa ditaruh paling bawah)
+if st.button("Bersihkan Blacklist"):
+    st.session_state.blacklist_ips = []
+    st.rerun()
 # (import lainnya seperti joblib, sklearn dll)
 
 # Membuat memori penyimpanan Blacklist IP jika belum ada
