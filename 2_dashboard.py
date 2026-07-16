@@ -100,7 +100,7 @@ def load_ml_engine():
     return model, df_features
 
 
-# 4. SESSION STATE
+# 4. SESSION STATE (Ditambah blacklist_ips)
 def init_session_state():
     defaults = {
         "current_index": 0,
@@ -109,6 +109,7 @@ def init_session_state():
         "tot_norm": 0,
         "tot_ddos": 0,
         "logs": [],
+        "blacklist_ips": [], # <-- Memori untuk Auto-Blocking
     }
     for key, value in defaults.items():
         if key not in st.session_state:
@@ -134,6 +135,7 @@ def reset_sim():
     st.session_state.tot_norm = 0
     st.session_state.tot_ddos = 0
     st.session_state.logs = []
+    st.session_state.blacklist_ips = [] # <-- Reset daftar hitam
     for stats in st.session_state.country_stats.values():
         stats["req"] = 0
 
@@ -240,7 +242,6 @@ def render_country_table():
             }
         )
 
-    # height tetap -> tabel jadi scrollable di dalam kotaknya sendiri
     st.dataframe(pd.DataFrame(rows), use_container_width=True, hide_index=True, height=200)
 
 
@@ -250,8 +251,18 @@ def render_event_log():
     columns = ["Time", "IP Address", "Country", "Requests", "Status", "Message"]
     df_logs = pd.DataFrame(st.session_state.logs, columns=columns) if st.session_state.logs else pd.DataFrame(columns=columns)
 
-    # height tetap -> event log jadi scrollable di dalam kotaknya sendiri
     st.dataframe(df_logs, use_container_width=True, hide_index=True, height=200)
+
+# FUNGSI BARU UNTUK AUTO-BLOCKING UI
+def render_blacklist():
+    st.markdown("### 🚫 DAFTAR HITAM IP (AUTO-BLOCKING)")
+    
+    if len(st.session_state.blacklist_ips) > 0:
+        df_black = pd.DataFrame(st.session_state.blacklist_ips)
+        # Menampilkan tabel blacklist yang bisa di-scroll
+        st.dataframe(df_black, use_container_width=True, hide_index=True, height=200)
+    else:
+        st.info("✅ Belum ada IP yang diblokir. Jaringan aman.")
 
 
 # 7. SIMULATION ENGINE (real-time, 150 baris data urut)
@@ -271,11 +282,24 @@ def run_simulation_step(sensitivity: float):
     is_ddos = prob_ddos >= sensitivity
 
     st.session_state.tot_req += 1
+    waktu_sekarang = datetime.now().strftime("%H:%M:%S")
 
     if is_ddos:
         st.session_state.tot_ddos += 1
         status, msg = "DDoS", f"SYN Flood ({prob_ddos * 100:.1f}%)"
         ip_addr = f"{random.choice([185, 220, 103, 45])}.{i % 250}.{random.randint(10, 99)}.1"
+        
+        # LOGIKA AUTO-BLOCKING
+        # Mengekstrak semua IP yang sudah ada di blacklist untuk mencegah duplikasi
+        ip_terblokir = [b["IP Penyerang"] for b in st.session_state.blacklist_ips]
+        if ip_addr not in ip_terblokir:
+            st.session_state.blacklist_ips.append({
+                "Waktu Blokir": waktu_sekarang,
+                "IP Penyerang": ip_addr,
+                "Aksi Sistem": "DROP (iptables)",
+                "Keterangan": "Terindikasi SYN Flood"
+            })
+            
     else:
         st.session_state.tot_norm += 1
         status, msg = "Normal", f"Normal Traffic ({prob_ddos * 100:.1f}%)"
@@ -285,7 +309,7 @@ def run_simulation_step(sensitivity: float):
     st.session_state.country_stats[country_code]["req"] += 1
 
     new_log = {
-        "Time": datetime.now().strftime("%H:%M:%S"),
+        "Time": waktu_sekarang,
         "IP Address": ip_addr,
         "Country": st.session_state.country_stats[country_code]["name"],
         "Requests": 1,
@@ -311,7 +335,12 @@ def main():
     with col_right:
         render_country_table()
 
-    render_event_log()
+    # Membagi layout bawah menjadi 2 kolom: Event Log dan Blacklist
+    col_log, col_block = st.columns(2, gap="large")
+    with col_log:
+        render_event_log()
+    with col_block:
+        render_blacklist()
 
     if st.session_state.simulasi_aktif:
         run_simulation_step(sensitivity)
