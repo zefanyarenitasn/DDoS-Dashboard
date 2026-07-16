@@ -93,7 +93,7 @@ def hex_to_rgba(hex_color: str, alpha: float = 0.2) -> str:
 @st.cache_resource
 def load_ml_engine():
     """Load model dan siapkan 150 baris data uji secara urut (bukan acak)."""
-    model = joblib.load("models/ddos_model.pkl")
+    model = joblib.load("Models/ddos_model.pkl")
     df_full = pd.read_parquet("Data/Syn-training.parquet")
     df_sample = df_full.sample(n=DATA_ROWS, random_state=42)
     df_features = df_sample.drop(columns=["Label"], errors="ignore")[model.feature_names_in_]
