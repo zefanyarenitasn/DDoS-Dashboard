@@ -5,6 +5,14 @@ import time
 import random
 import joblib
 from datetime import datetime
+import streamlit as st
+import pandas as pd
+import time
+# (import lainnya seperti joblib, sklearn dll)
+
+# Membuat memori penyimpanan Blacklist IP jika belum ada
+if 'blacklist_ips' not in st.session_state:
+    st.session_state.blacklist_ips = []
 
 # 1. PAGE CONFIGURATION
 st.set_page_config(
@@ -319,3 +327,49 @@ def main():
 
 if __name__ == "__main__":
     main()
+
+st.subheader("🛡️ Simulasi Auto-Blocking (Dataset)")
+st.write("Sistem membaca aliran data dari dataset dan melakukan eksekusi pemblokiran secara real-time.")
+
+if st.button("Mulai Monitoring Trafik"):
+    # 1. Baca dataset
+    df = pd.read_parquet("Data/Syn-training.parquet")
+    
+    # 2. Ambil sampel acak (misal 30 paket) untuk demo
+    df_demo = df.sample(n=30, random_state=42)
+    
+    # Tempat penampung UI agar teksnya bisa update otomatis (tidak berjejer ke bawah)
+    status_box = st.empty()
+    alert_box = st.empty()
+    
+    st.write("---")
+    st.markdown("**Status Eksekusi:**")
+    
+    # 3. Looping membaca paket satu per satu
+    for index, row in df_demo.iterrows():
+        # WARNING: Sesuaikan 'Source IP' dengan nama kolom IP di datasetmu!
+        # Jika di dataset tidak ada kolom IP, kita buat IP dummy untuk keperluan demo simulasi
+        ip_sumber = row.get('Source IP', f"192.168.1.{index % 255}") 
+        
+        # 4. Siapkan fitur untuk ditebak model (Buang kolom Label dan kolom non-numerik)
+        fitur = row.drop(['Label', 'Source IP'], errors='ignore')
+        
+        # Pastikan kolom sesuai dengan model saat training
+        fitur_model = fitur[model.feature_names_in_].values.reshape(1, -1)
+        
+        # 5. Model melakukan tebakan
+        prediksi = model.predict(fitur_model)[0]
+        
+        status_box.info(f"⏳ Memeriksa paket masuk dari IP: {ip_sumber}...")
+        time.sleep(0.3) # Memberikan jeda 0.3 detik agar terlihat seperti real-time
+        
+        # 6. Logika Mitigasi (Auto-Blocking)
+        if prediksi == 1: # Jika terdeteksi sebagai SYN Flood
+            if ip_sumber not in st.session_state.blacklist_ips:
+                st.session_state.blacklist_ips.append(ip_sumber) # Masukkan ke memori Blacklist
+                
+                # Simulasi notifikasi peringatan
+                alert_box.error(f"🚨 ANOMALI TERDETEKSI! Memblokir IP {ip_sumber} (iptables DROP)")
+                time.sleep(0.5) # Tahan peringatan sebentar agar terbaca
+        else:
+            alert_box.success(f"✅ Aman. Trafik normal dari IP {ip_sumber} dilewatkan.")
